@@ -93,6 +93,7 @@ const [open, setOpen] = useState(false);
 | `children` | `React.ReactNode` | — | The buttons to stack. Order matters: index 0 is the anchor. |
 | `direction` | `'left' \| 'right' \| 'up' \| 'down'` | `'left'` | Which way the row fans out from the anchor. `'left'` pins the stack to the right edge and expands leftward. |
 | `size` | `'small' \| 'medium' \| 'large' \| number` | `'large'` | Diameter of each button. `small` 40, `medium` 48, `large` 56; numbers are used verbatim. |
+| `variant` | `'circular' \| 'rounded' \| 'square'` | `'circular'` | Shape of each button. `rounded` uses a 25% corner radius, which scales with `size`. For an arbitrary radius, use `slotProps.item.sx`. |
 | `gap` | `number` | `16` | Main-axis gap in pixels between buttons when expanded. |
 | `fadeWidth` | `number` | `12` | Width in pixels of the soft gradient ramp at each slice edge. `0` gives a hard cut. |
 | `trigger` | `'hover' \| 'click' \| 'manual'` | `'hover'` | `'hover'` opens on mouse enter, closes on leave, toggles on touch/pen tap. `'click'` toggles on any click. `'manual'` disables built-in pointer interaction. |
@@ -137,6 +138,7 @@ const theme = createTheme({
 1. **The parent must pin the anchor edge.** The root animates its own main-axis extent, so it only fans out if its parent keeps the anchor edge fixed: `justify-content: flex-end` for `direction="left"`, `flex-start` for `"right"`, `align-items: flex-end` for `"up"`, `flex-start` for `"down"`. Otherwise the root grows in place and pushes surrounding content instead of fanning out.
 2. **Each child is forced to `box-shadow: none` and 100% size**, so the parent owns the global shadow shape. Pass visual styles via each child's `sx`; the component overrides sizing and shadow only. Overriding that reset requires `slotProps.item.sx['& > *']` with `!important`.
 3. **The single `drop-shadow` lives on the root**, because a filter traces the soft mask edges while a `box-shadow` would trace the wrapper rectangles. Setting `overflow: hidden` on the root via `sx` clips the fan-out.
-4. **Collapsed slices are hidden from assistive technology.** While collapsed, the item wrappers are `aria-hidden` and made non-focusable, so they leave the tab order and the accessibility tree. The root stays focusable: Enter or Space opens the group, focus moves to the first item, and Escape closes it and returns focus to the root.
-5. **With a single child no mask is applied** — it behaves like a plain `Fab`.
-6. **`direction` is physical, not logical.** It is not mirrored under RTL; right-to-left layouts should set `direction="left"` explicitly.
+4. **Shapes.** `variant` covers the three common cases; children inherit the wrapper's corner radius, so the shape applies to the whole group rather than to each button's own `Fab` default. Any other radius is reachable with `slotProps.item.sx`.
+5. **Collapsed slices are hidden from assistive technology.** While collapsed, the item wrappers are `aria-hidden` and made non-focusable, so they leave the tab order and the accessibility tree. The root stays focusable: Enter or Space opens the group, focus moves to the first item, and Escape closes it and returns focus to the root.
+6. **With a single child no mask is applied** — it behaves like a plain `Fab`.
+7. **`direction` is physical, not logical.** It is not mirrored under RTL; right-to-left layouts should set `direction="left"` explicitly.

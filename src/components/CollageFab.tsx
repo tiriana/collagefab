@@ -14,10 +14,20 @@ export type CollageFabTrigger = 'hover' | 'click' | 'manual';
 
 export type CollageFabSize = 'small' | 'medium' | 'large' | number;
 
+export type CollageFabVariant = 'circular' | 'rounded' | 'square';
+
 const SIZE_MAP: Record<'small' | 'medium' | 'large', number> = {
   small: 40,
   medium: 48,
   large: 56,
+};
+
+// `'rounded'` scales with the button so its corner reads the same at every size;
+// 25% stays a rounded square, where a circle would need 50%.
+const CORNER_RADIUS: Record<CollageFabVariant, number | string> = {
+  circular: '50%',
+  rounded: '25%',
+  square: 0,
 };
 
 const FOCUSABLE_DESCENDANT_SELECTOR = [
@@ -46,6 +56,8 @@ export interface CollageFabOwnerState {
   direction: CollageFabDirection;
   trigger: CollageFabTrigger;
   size: number;
+  variant: CollageFabVariant;
+  cornerRadius: number | string;
   gap: number;
   fadeWidth: number;
   count: number;
@@ -97,6 +109,14 @@ export interface CollageFabProps
    * @default 'large'
    */
   size?: CollageFabSize;
+  /**
+   * The shape of every button. `'circular'` clips each slice to a circle,
+   * `'rounded'` to a rounded square and `'square'` to a sharp-cornered square.
+   * The mask still slices the silhouette along the main axis, so the stack reads
+   * as one shape when collapsed and as separate shapes when expanded.
+   * @default 'circular'
+   */
+  variant?: CollageFabVariant;
   /**
    * Main axis gap between two buttons when expanded, in pixels.
    * @default 16
@@ -251,7 +271,8 @@ const CollageFabItemRoot = styled('div', {
   slot: 'item',
   overridesResolver: (_props, styles) => styles.item,
 })(({ ownerState }: { ownerState: CollageFabItemOwnerState }) => {
-  const { direction, size, index, geometry, transitionDuration, transitionEasing } = ownerState;
+  const { direction, size, index, geometry, cornerRadius, transitionDuration, transitionEasing } =
+    ownerState;
   const horizontal = direction === 'left' || direction === 'right';
   const anchorEdge =
     direction === 'left'
@@ -269,7 +290,7 @@ const CollageFabItemRoot = styled('div', {
     ...(horizontal ? { top: 0 } : { left: 0 }),
     width: size,
     height: size,
-    borderRadius: '50%',
+    borderRadius: cornerRadius,
     overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',
@@ -288,9 +309,11 @@ const CollageFabItemRoot = styled('div', {
     WebkitMaskRepeat: 'no-repeat',
     maskRepeat: 'no-repeat',
     transition: `transform ${timing}, -webkit-mask-position ${timing}, mask-position ${timing}`,
-    // Strip arbitrary shadows from the children so the root controls the global 3D shape.
+    // Strip arbitrary shadows from the children and make them inherit the wrapper's
+    // silhouette, so the root controls the global 3D shape.
     '& > *': {
       boxShadow: 'none !important',
+      borderRadius: 'inherit !important',
       width: '100%',
       height: '100%',
       margin: 0,
@@ -373,6 +396,7 @@ export const CollageFab = React.forwardRef<HTMLDivElement, CollageFabProps>(
       children,
       direction = 'left',
       size = 'large',
+      variant = 'circular',
       gap = 16,
       fadeWidth = 12,
       trigger = 'hover',
@@ -408,6 +432,8 @@ export const CollageFab = React.forwardRef<HTMLDivElement, CollageFabProps>(
       direction,
       trigger,
       size: resolveSize(size),
+      variant,
+      cornerRadius: CORNER_RADIUS[variant],
       gap,
       fadeWidth,
       count,
