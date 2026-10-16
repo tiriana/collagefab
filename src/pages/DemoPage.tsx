@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { Box, Container, Fab, Grid, Paper, Typography } from '@mui/material';
 import {
   Settings,
@@ -20,24 +21,213 @@ const MOCK_TOOLS = [
   { icon: <Terminal />, color: '#4caf50', name: 'Console' },
 ];
 
-// Expanded, 4 buttons at gap 14 occupy 4 * 56 + 3 * 14; collapsed they occupy 56.
-const FAN_EXTENT = 266;
-const BUTTON_EXTENT = 56;
+const BUTTON_MIN = 24;
+const BUTTON_MAX = 56;
+const GAP_MIN = 6;
+const GAP_MAX = 14;
+const GAP_RATIO = 0.25;
+const CARD_MIN_HEIGHT = 200;
+const DIRECTION_BUTTON_COUNT = 4;
 
-// The root grows in place, so each card reserves the full expanded extent and
-// pins the root to the anchor edge with `justifyContent`; otherwise the fan-out
-// would push the card around instead of unfolding into the reserved space.
-const DIRECTION_DEMOS: Array<{
+interface RowFit {
+  size: number;
+  gap: number;
+  extent: number;
+}
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+/**
+ * Largest button diameter that keeps `count` buttons on one line inside
+ * `available` px. The gap shrinks with the diameter, so a dense row on a narrow
+ * card tightens up instead of spilling past the card edge.
+ */
+function fitRow(count: number, available: number): RowFit {
+  const spans = Math.max(count - 1, 0);
+  let size = BUTTON_MAX;
+  let gap = GAP_MAX;
+  if (available > 0) {
+    for (let pass = 0; pass < 6; pass += 1) {
+      size = clamp(Math.floor((available - spans * gap) / count), BUTTON_MIN, BUTTON_MAX);
+      const nextGap = clamp(Math.round(size * GAP_RATIO), GAP_MIN, GAP_MAX);
+      if (nextGap === gap) {
+        break;
+      }
+      gap = nextGap;
+    }
+  }
+  return { size, gap, extent: count * size + spans * gap };
+}
+
+function useMeasuredWidth<T extends HTMLElement>() {
+  const ref = React.useRef<T>(null);
+  const [width, setWidth] = React.useState(0);
+
+  React.useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) {
+      return undefined;
+    }
+    const update = () => setWidth(node.clientWidth);
+    update();
+    if (typeof ResizeObserver === 'undefined') {
+      return undefined;
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  return { ref, width };
+}
+
+const CARD_SX = {
+  p: 4,
+  borderRadius: 4,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'stretch',
+  background: 'linear-gradient(145deg, #232323 0%, #1a1a1a 100%)',
+} as const;
+
+function CardHeading({ title, caption }: { title: string; caption: string }) {
+  return (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <Typography variant="h6" fontWeight="bold" color="grey.300">
+        {title}
+      </Typography>
+      <Typography variant="caption" sx={{ color: 'grey.600', maxWidth: 100, textAlign: 'right' }}>
+        {caption}
+      </Typography>
+    </Box>
+  );
+}
+
+function CountCard({ count }: { count: number }) {
+  const { ref, width } = useMeasuredWidth<HTMLDivElement>();
+  const { size, gap } = fitRow(count, width);
+  const caption =
+    count === 7 ? 'Limits of visual clarity' : count === 1 ? 'Standard Fab bypass' : 'Perfect slice split';
+
+  return (
+    <Paper elevation={3} sx={{ ...CARD_SX, minHeight: CARD_MIN_HEIGHT }}>
+      <CardHeading title={`${count} Button${count > 1 ? 's' : ''}`} caption={caption} />
+
+      {/* Full-width stage: it is the measured box the row has to fit into, and it
+          centers the stack. The bottom padding mirrors the heading so the stack
+          lands on the card's centreline instead of sinking into the lower half. */}
+      <Box
+        ref={ref}
+        sx={{
+          width: '100%',
+          flexGrow: 1,
+          display: 'flex',
+          justifyContent: 'flex-end',
+          alignItems: 'center',
+          pb: 4,
+        }}
+      >
+        <CollageFab size={size} gap={gap} fadeWidth={12}>
+          {MOCK_TOOLS.slice(0, count).map((tool, idx) => (
+            <Fab
+              key={idx}
+              sx={{
+                bgcolor: tool.color,
+                color: 'white',
+                '&:hover': { bgcolor: tool.color, filter: 'brightness(1.2)' },
+              }}
+            >
+              {tool.icon}
+            </Fab>
+          ))}
+        </CollageFab>
+      </Box>
+    </Paper>
+  );
+}
+
+interface DirectionDemo {
   value: CollageFabDirection;
   caption: string;
   horizontal: boolean;
   justifyContent: 'flex-start' | 'flex-end';
-}> = [
+}
+
+const DIRECTION_DEMOS: DirectionDemo[] = [
   { value: 'left', caption: 'Pins right, fans left', horizontal: true, justifyContent: 'flex-end' },
   { value: 'right', caption: 'Pins left, fans right', horizontal: true, justifyContent: 'flex-start' },
   { value: 'up', caption: 'Pins bottom, fans up', horizontal: false, justifyContent: 'flex-end' },
   { value: 'down', caption: 'Pins top, fans down', horizontal: false, justifyContent: 'flex-start' },
 ];
+
+// One axis per row: the horizontal pair sits above the vertical pair, so a
+// reader never compares a vertical fan against a horizontal one.
+const HORIZONTAL_DEMOS = DIRECTION_DEMOS.filter((demo) => demo.horizontal);
+const VERTICAL_DEMOS = DIRECTION_DEMOS.filter((demo) => !demo.horizontal);
+
+function DirectionCard({ demo }: { demo: DirectionDemo }) {
+  const { ref, width } = useMeasuredWidth<HTMLDivElement>();
+  const { size, gap, extent } = fitRow(DIRECTION_BUTTON_COUNT, width);
+
+  return (
+    <Paper elevation={3} sx={CARD_SX}>
+      <CardHeading title={demo.value} caption={demo.caption} />
+
+      {/* A square stage reserves the full fan extent on both axes, so the fan-out
+          never resizes the card. Every card shares the same stage, which keeps the
+          four heights identical, and pins the anchor to its own edge on the main
+          axis while centering it on the cross axis: left/right and up/down each
+          mirror, and the two cards in a row line up. */}
+      <Box
+        ref={ref}
+        sx={{
+          width: '100%',
+          height: extent,
+          display: 'flex',
+          flexDirection: demo.horizontal ? 'row' : 'column',
+          justifyContent: demo.justifyContent,
+          alignItems: 'center',
+          overflow: 'visible',
+        }}
+      >
+        <CollageFab direction={demo.value} size={size} gap={gap} fadeWidth={12}>
+          {MOCK_TOOLS.slice(0, DIRECTION_BUTTON_COUNT).map((tool, idx) => (
+            <Fab
+              key={idx}
+              sx={{
+                bgcolor: tool.color,
+                color: 'white',
+                '&:hover': { bgcolor: tool.color, filter: 'brightness(1.2)' },
+              }}
+            >
+              {tool.icon}
+            </Fab>
+          ))}
+        </CollageFab>
+      </Box>
+    </Paper>
+  );
+}
+
+function DirectionRow({ label, demos }: { label: string; demos: DirectionDemo[] }) {
+  return (
+    <Box>
+      <Typography
+        variant="overline"
+        sx={{ color: 'grey.500', letterSpacing: '0.2em', display: 'block', mb: 2 }}
+      >
+        {label}
+      </Typography>
+      <Grid container spacing={4} justifyContent="center">
+        {demos.map((demo) => (
+          <Grid item xs={12} md={6} lg={6} key={`direction-${demo.value}`}>
+            <DirectionCard demo={demo} />
+          </Grid>
+        ))}
+      </Grid>
+    </Box>
+  );
+}
 
 export function DemoPage() {
   return (
@@ -54,46 +244,7 @@ export function DemoPage() {
       <Grid container spacing={4} justifyContent="center">
         {[1, 2, 3, 4, 5, 6, 7].map((count) => (
           <Grid item xs={12} md={6} lg={4} key={`demo-${count}`}>
-            <Paper
-              elevation={3}
-              sx={{
-                p: 4,
-                borderRadius: 4,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end', // Aligns the anchor to the right
-                minHeight: 200,
-                justifyContent: 'space-between',
-                background: 'linear-gradient(145deg, #232323 0%, #1a1a1a 100%)'
-              }}
-            >
-              <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Typography variant="h6" fontWeight="bold" color="grey.300">
-                  {count} Button{count > 1 ? 's' : ''}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'grey.600', maxWidth: 100, textAlign: 'right' }}>
-                  {count === 7 ? 'Limits of visual clarity' : count === 1 ? 'Standard Fab bypass' : 'Perfect slice split'}
-                </Typography>
-              </Box>
-
-              {/* The Component Instance */}
-              <Box sx={{ pb: 1, pr: 1 }}>
-                <CollageFab gap={14} fadeWidth={12}>
-                  {MOCK_TOOLS.slice(0, count).map((tool, idx) => (
-                    <Fab
-                      key={idx}
-                      sx={{
-                        bgcolor: tool.color,
-                        color: 'white',
-                        '&:hover': { bgcolor: tool.color, filter: 'brightness(1.2)' }
-                      }}
-                    >
-                      {tool.icon}
-                    </Fab>
-                  ))}
-                </CollageFab>
-              </Box>
-            </Paper>
+            <CountCard count={count} />
           </Grid>
         ))}
       </Grid>
@@ -102,61 +253,10 @@ export function DemoPage() {
         Direction
       </Typography>
 
-      <Grid container spacing={4} justifyContent="center">
-        {DIRECTION_DEMOS.map((demo) => (
-          <Grid item xs={12} md={6} lg={4} key={`direction-${demo.value}`}>
-            <Paper
-              elevation={3}
-              sx={{
-                p: 4,
-                borderRadius: 4,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'flex-end', // Aligns the anchor to the right
-                minHeight: 200,
-                justifyContent: 'space-between',
-                background: 'linear-gradient(145deg, #232323 0%, #1a1a1a 100%)'
-              }}
-            >
-              <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Typography variant="h6" fontWeight="bold" color="grey.300">
-                  {demo.value}
-                </Typography>
-                <Typography variant="caption" sx={{ color: 'grey.600', maxWidth: 100, textAlign: 'right' }}>
-                  {demo.caption}
-                </Typography>
-              </Box>
-
-              {/* Reserves the full expanded extent so the fan-out never pushes the card. */}
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: demo.horizontal ? 'row' : 'column',
-                  justifyContent: demo.justifyContent,
-                  minWidth: demo.horizontal ? FAN_EXTENT : BUTTON_EXTENT,
-                  minHeight: demo.horizontal ? BUTTON_EXTENT : FAN_EXTENT,
-                  overflow: 'visible',
-                }}
-              >
-                <CollageFab direction={demo.value} gap={14} fadeWidth={12}>
-                  {MOCK_TOOLS.slice(0, 4).map((tool, idx) => (
-                    <Fab
-                      key={idx}
-                      sx={{
-                        bgcolor: tool.color,
-                        color: 'white',
-                        '&:hover': { bgcolor: tool.color, filter: 'brightness(1.2)' }
-                      }}
-                    >
-                      {tool.icon}
-                    </Fab>
-                  ))}
-                </CollageFab>
-              </Box>
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        <DirectionRow label="Horizontal" demos={HORIZONTAL_DEMOS} />
+        <DirectionRow label="Vertical" demos={VERTICAL_DEMOS} />
+      </Box>
     </Container>
   );
 }
